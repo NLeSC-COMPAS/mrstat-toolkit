@@ -1,1 +1,4 @@
 .venv/
+
+# Julia environments are resolved per machine.
+/Manifest*.toml

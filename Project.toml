@@ -1,0 +1,8 @@
+# Julia workspace: one shared Manifest.toml for all Julia projects.
+[workspace]
+projects = [
+    "julia/NeuralBloch.jl",
+    "julia/NeuralBloch.jl/test",
+    "julia/NeuralBloch.jl/scripts",
+    "julia/NeuralBloch.jl/dev",
+]
