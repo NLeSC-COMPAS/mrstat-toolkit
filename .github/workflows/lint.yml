@@ -5,6 +5,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Manual run from the Actions tab or `gh workflow run`
+  workflow_dispatch:
 
 # A new push to a pull request cancels the run of the push before it
 concurrency:

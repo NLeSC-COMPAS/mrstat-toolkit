@@ -12,6 +12,8 @@ on:
       - ".github/workflows/julia-ci.yml"
   pull_request:
     paths: *julia
+  # Manual run from the Actions tab or `gh workflow run`
+  workflow_dispatch:
 
 jobs:
   test:

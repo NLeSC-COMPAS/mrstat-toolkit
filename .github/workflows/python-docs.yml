@@ -12,6 +12,8 @@ on:
       - ".github/workflows/python-docs.yml"
   pull_request:
     paths: *docs
+  # Manual run from the Actions tab or `gh workflow run`
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
