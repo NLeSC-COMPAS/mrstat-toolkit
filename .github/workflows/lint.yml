@@ -1,0 +1,20 @@
+name: lint
+
+# No paths filter: the hooks of prek.toml check the whole repository.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to a pull request cancels the run of the push before it
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: j178/prek-action@5337cb91e0fa35a7ff31b9ca345126d8bbbcdf16 # v2.0.6

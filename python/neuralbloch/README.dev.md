@@ -98,7 +98,7 @@ uv sync --group docs
 
 ## Continuous integration
 
-`.github/workflows/python-ci.yml` at the repository root has two jobs:
+Two workflows at the repository root check this package:
 
-- `lint` runs the hooks of `prek.toml`, via the [`j178/prek-action`](https://github.com/j178/prek-action) action.
-- `test` runs the unit and integration tests with coverage, on Python 3.12, 3.13, and 3.14. The runners have no GPU, so the Julia tests are skipped.
+- `.github/workflows/lint.yml` runs the hooks of `prek.toml` on the whole repository, via the [`j178/prek-action`](https://github.com/j178/prek-action) action.
+- `.github/workflows/python-ci.yml` runs the unit and integration tests with coverage, on Python 3.12, 3.13, and 3.14. The runners have no GPU, so the Julia tests are skipped.

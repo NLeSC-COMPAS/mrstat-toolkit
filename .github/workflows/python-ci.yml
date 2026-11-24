@@ -3,7 +3,17 @@ name: python-ci
 on:
   push:
     branches: [main]
+    # The tests run only when a file that can change their result changes
+    paths: &code
+      - "python/neuralbloch/src/**"
+      - "python/neuralbloch/tests/**"
+      - "python/neuralbloch/pyproject.toml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".python-version"
+      - ".github/workflows/python-ci.yml"
   pull_request:
+    paths: *code
 
 # A new push to a pull request cancels the run of the push before it
 concurrency:
@@ -11,40 +21,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: j178/prek-action@5337cb91e0fa35a7ff31b9ca345126d8bbbcdf16 # v2.0.6
-
-  # The tests run only when a file that can change their result changes
-  changes:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      code: ${{ steps.filter.outputs.code }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        id: filter
-        with:
-          filters: |
-            code:
-              - "python/neuralbloch/src/**"
-              - "python/neuralbloch/tests/**"
-              - "python/neuralbloch/pyproject.toml"
-              - "pyproject.toml"
-              - "uv.lock"
-              - ".python-version"
-              - ".github/workflows/python-ci.yml"
-
   test:
-    needs: [lint, changes]
-    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
