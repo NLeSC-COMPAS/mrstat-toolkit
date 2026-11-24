@@ -1,0 +1,183 @@
+import hashlib
+import random
+from pathlib import Path
+from typing import TYPE_CHECKING
+from typing import Any
+import numpy as np
+import numpy.typing as npt
+import torch
+from pydantic import BaseModel
+from pydantic import ValidationError
+from neuralbloch.config_schema import ModelConfig
+from neuralbloch.config_schema import ParameterRanges
+
+
+if TYPE_CHECKING:
+    from neuralbloch.model import FCModel
+
+
+def complex_to_real_imag(
+    arr: npt.NDArray[np.complexfloating],
+) -> npt.NDArray[np.float32]:
+    """Stack a complex array into paired real and imaginary components.
+
+    The returned array has one additional final axis ordered as ``[real, imag]``.
+    """
+    return np.stack((arr.real, arr.imag), axis=-1).astype(np.float32)
+
+
+def set_seed(seed: int) -> None:
+    """Set random seeds for reproducible experiments."""
+    random.seed(seed)
+    np.random.seed(seed)
+
+    torch.manual_seed(seed)
+
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+
+
+def get_device(device: str) -> str:
+    """Select computation device.
+
+    Args:
+        device: The wanted device (``experiment.device``).
+
+    Returns:
+        ``device`` if CUDA is available, and ``"cpu"`` if not.
+    """
+    return device if torch.cuda.is_available() else "cpu"
+
+
+def sample_parameters(ranges: ParameterRanges, n_samples: int) -> torch.Tensor:
+    """Sample tissue parameters uniformly over the training ranges.
+
+    T1 and T2 are sampled log-uniformly and returned in physical units. B1 is
+    sampled uniformly, matching the public model input format ``[T1, T2, B1]``.
+
+    Args:
+        ranges: The training domain (``data.parameter_ranges``).
+        n_samples: Number of parameter samples to draw.
+
+    Returns:
+        A float32 tensor of shape ``(n_samples, 3)``.
+    """
+    T1, T2, B1_range = ranges.T1_s, ranges.T2_s, ranges.B1
+
+    log_T1 = torch.empty(n_samples).uniform_(np.log(T1.lower), np.log(T1.upper))
+    log_T2 = torch.empty(n_samples).uniform_(np.log(T2.lower), np.log(T2.upper))
+    B1 = torch.empty(n_samples).uniform_(B1_range.lower, B1_range.upper)
+
+    return torch.stack([log_T1.exp(), log_T2.exp(), B1], dim=1)
+
+
+def load_model(
+    pt_file_path: str | Path,
+    device: str,
+) -> tuple["FCModel", dict[str, Any]]:
+    """Load a trained surrogate model from a checkpoint.
+
+    Args:
+        pt_file_path: The checkpoint file (``experiment.pt_file_path``).
+        device: The device of the model.
+
+    Returns:
+        The model (``model_from_checkpoint``) and the checkpoint.
+    """
+    checkpoint = load_checkpoint(pt_file_path, device)
+    return model_from_checkpoint(checkpoint, device), checkpoint
+
+
+def load_checkpoint(pt_file_path: str | Path, device: str) -> dict[str, Any]:
+    """Load a checkpoint file (``experiment.pt_file_path``) onto a device."""
+    checkpoint: dict[str, Any] = torch.load(pt_file_path, map_location=device)
+    return checkpoint
+
+
+def checkpoint_config[T: BaseModel](schema: type[T], value: object, key: str) -> T:
+    """Validate a configuration that a checkpoint stores.
+
+    Args:
+        schema: The schema of the configuration.
+        value: The stored configuration.
+        key: The location in the checkpoint, for the error message.
+
+    Returns:
+        The validated configuration.
+
+    Raises:
+        ValueError: If the stored configuration is not valid.
+    """
+    try:
+        return schema.model_validate(value)
+    except ValidationError as error:
+        # Without this, users look for the problem in config/
+        raise ValueError(
+            f"The checkpoint stores a {key} that is not valid. The problem is "
+            "in the checkpoint, not in config/. Train the model again.\n"
+            f"{error}"
+        ) from error
+
+
+def model_from_checkpoint(checkpoint: dict[str, Any], device: str) -> "FCModel":
+    """Create the model of a checkpoint and load its saved weights.
+
+    The model comes from the configuration in the checkpoint, not from
+    ``config/``.
+    """
+    from neuralbloch.model import FCModel
+
+    model_config = checkpoint["model_config"]
+    if "parameter_ranges" not in checkpoint["data_config"] or not {
+        "signal",
+        "derivative",
+    } <= set(model_config):
+        raise ValueError(
+            "The checkpoint has the config keys of an earlier version of "
+            "NeuralBloch. Train the model again."
+        )
+
+    NTR = checkpoint["NTR"]
+
+    model = FCModel(
+        NTR,
+        checkpoint_config(ModelConfig, model_config, "model_config"),
+        checkpoint_config(
+            ParameterRanges,
+            checkpoint["data_config"]["parameter_ranges"],
+            "data_config.parameter_ranges",
+        ),
+    )
+    model.load_state_dict(checkpoint["model_state"])
+    model.to(device)
+    model.eval()
+
+    return model
+
+
+def file_sha256(path: str | Path) -> str:
+    """Return the sha256 of the file contents, in hexadecimal."""
+    with open(path, "rb") as f:
+        return hashlib.file_digest(f, "sha256").hexdigest()
+
+
+# The keys of the data configuration that give the RF tables of the training
+# sequence (data_generation.jl)
+RF_TABLE_KEYS = ("rf_angle_file", "rf_phase_file")
+
+
+def rf_sha256(rf_angle_file: str | Path, rf_phase_file: str | Path) -> dict[str, str]:
+    """Return the sha256 of the two RF tables of a sequence.
+
+    Args:
+        rf_angle_file: The RF angle table (``data.rf_angle_file``).
+        rf_phase_file: The RF phase table (``data.rf_phase_file``).
+
+    Returns:
+        The sha256 by key of the data configuration (``RF_TABLE_KEYS``).
+    """
+    return {
+        "rf_angle_file": file_sha256(rf_angle_file),
+        "rf_phase_file": file_sha256(rf_phase_file),
+    }

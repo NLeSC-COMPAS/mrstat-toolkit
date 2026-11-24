@@ -1,0 +1,14 @@
+seed: 42
+
+# Torch device. If CUDA is not available, "cpu" is used.
+device: "cuda"
+
+# Generated datasets will be saved on these locations
+dataset_unsplit_path: "data/datasets/dataset_unsplit.h5"
+dataset_for_validation_path: "data/datasets/dataset_for_validation.h5"
+dataset_for_testing_path: "data/datasets/dataset_for_testing.h5"
+
+# Training output will be saved on these locations
+pt_file_path: "outputs/model.pt"
+# TensorBoard writes its logs in this directory.
+log_dir: "outputs/log_file"

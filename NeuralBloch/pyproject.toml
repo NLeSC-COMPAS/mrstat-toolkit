@@ -1,0 +1,155 @@
+[project]
+name = "neuralbloch"
+version = "0.1.0"
+description = "Neural network surrogate model for Bloch simulations in MR-STAT"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+    "cyclopts>=5.4.0",
+    "h5py>=3.16.0",
+    "juliacall>=0.9.35",
+    "numpy>=2.5.1",
+    "onnx>=1.22.0",
+    "onnxruntime>=1.29.0",
+    "onnxscript>=0.7.1",
+    "pydantic>=2.14.3",
+    "pyyaml>=6.0.3",
+    "tensorboard>=2.21.0",
+    "torch==2.13.0",
+]
+
+[project.scripts]
+neuralbloch = "neuralbloch.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.13.6,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[dependency-groups]
+dev = [
+    "prek>=0.4.11",
+    "pytest>=9",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.1",
+    "ty>=0.0.66",
+]
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.8.1",
+]
+
+[tool.pytest]
+testpaths = ["tests"]
+# For the shared module tests/helpers.py
+pythonpath = ["tests"]
+strict = true
+
+[tool.coverage.run]
+source = ["neuralbloch"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "D", # pydocstyle
+    "E", # pycodestyle (error)
+    "F", # Pyflakes
+    "I", # isort
+    "W", # pycodestyle (warning)
+    "N", # pep8-naming
+    "PT", # flake8-pytest-style
+]
+
+ignore = [
+    "E501", # Line too long
+    "D100", # Missing module docstring
+    "D104", # Missing public package docstring
+    "D105", # Missing docstring in magic method
+    "D107", # Missing `__init__` docstring
+    # MR-STAT notation (T1, T2, B1, dT1, dT2, NTR) and the juliacall `Main as jl`
+    # alias are conventional in this domain and match data_generation.jl
+    "N803", # Argument name should be lowercase
+    "N806", # Variable in function should be lowercase
+    "N815", # Variable in class scope should not be mixedCase
+    "N813", # Camelcase imported as lowercase
+    # The following list excludes rules irrelevant to the Google style
+    "D203",
+    "D204",
+    "D213",
+    "D215",
+    "D400",
+    "D401",
+    "D404",
+    "D406",
+    "D407",
+    "D408",
+    "D409",
+    "D413",
+]
+
+# Allow autofix for all enabled rules (when `--fix`) is provided.
+fixable = ["A", "B", "C", "D", "E", "F", "I"]
+
+# https://docs.astral.sh/ty/coming-from-mypy-or-pyright/#recommended-configuration
+# To catch that there are no types or the types are badly written
+extend-select = ["ANN", "PYI"]
+preview = true
+
+[tool.ruff.lint.per-file-ignores]
+# Ignore docstrings in all test files
+"tests/**/*.py" = ["D"]
+# The pytest style rules only make sense for tests (cli.py has test_* commands)
+"src/**/*.py" = ["PT"]
+
+[tool.ruff.lint.isort]
+force-single-line = true
+lines-after-imports = 2
+no-lines-before = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+## Ty to catch that the types are wrong
+[tool.ty.environment]
+python-version = "3.12"
+
+[tool.ty.src]
+include = ["src"]
+
+[tool.ty.rules]
+missing-type-argument = "error"
+possibly-unresolved-reference = "warn"
+
+[tool.ty.analysis]
+# `juliacall.Main` is a live handle on the Julia runtime, populated at import
+# time, so there is no static definition for it to resolve.
+replace-imports-with-any = ["juliacall"]

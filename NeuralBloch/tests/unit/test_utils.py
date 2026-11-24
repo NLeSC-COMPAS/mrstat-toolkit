@@ -1,0 +1,130 @@
+import copy
+import math
+from collections.abc import Callable
+from typing import Any
+import numpy as np
+import pytest
+import torch
+from neuralbloch.config_schema import ParameterRanges
+from neuralbloch.model import FCModel
+from neuralbloch.utils import complex_to_real_imag
+from neuralbloch.utils import model_from_checkpoint
+from neuralbloch.utils import sample_parameters
+
+
+def test_complex_conversion_pairs_real_and_imaginary_values() -> None:
+    values = np.array(
+        [[1 + 2j, 3 + 4j], [5 + 6j, 7 + 8j]],
+        dtype=np.complex64,
+    )
+
+    paired = complex_to_real_imag(values)
+
+    assert paired.dtype == np.float32
+    assert paired.shape == (2, 2, 2)
+    np.testing.assert_array_equal(paired[..., 0], values.real)
+    np.testing.assert_array_equal(paired[..., 1], values.imag)
+    restored = torch.view_as_complex(torch.from_numpy(paired).contiguous())
+    np.testing.assert_array_equal(restored.numpy(), values)
+
+
+def test_parameter_sampling_is_physical_and_log_uniform(
+    data_config: dict[str, Any],
+) -> None:
+    torch.manual_seed(42)
+    samples = sample_parameters(
+        ParameterRanges.model_validate(data_config["parameter_ranges"]), 20_000
+    )
+
+    assert samples.shape == (20_000, 3)
+    ranges = data_config["parameter_ranges"]
+    for column, name in enumerate(("T1_s", "T2_s", "B1")):
+        assert torch.all(samples[:, column] >= ranges[name]["lower"])
+        assert torch.all(samples[:, column] <= ranges[name]["upper"])
+
+    for column, name in enumerate(("T1_s", "T2_s")):
+        lower = math.log(ranges[name]["lower"])
+        upper = math.log(ranges[name]["upper"])
+        assert torch.log(samples[:, column]).mean().item() == pytest.approx(
+            (lower + upper) / 2, abs=0.03
+        )
+
+
+@pytest.mark.parametrize(
+    ("model_config", "data_config"),
+    [
+        (
+            {"derivative_mode": "direct", "NB_signal": 3},
+            {"T1_lower": 0.1, "T1_upper": 6.0},
+        ),
+        # Only the model blocks are old
+        (
+            {"derivative_mode": "direct", "signal": {"rank": 3}},
+            {"parameter_ranges": {}},
+        ),
+    ],
+    ids=["old", "partly-new"],
+)
+def test_a_checkpoint_with_the_old_config_keys_is_refused(
+    model_config: dict[str, Any], data_config: dict[str, Any]
+) -> None:
+    checkpoint = {
+        "NTR": 5,
+        "model_config": model_config,
+        "data_config": data_config,
+        "model_state": {},
+    }
+    with pytest.raises(ValueError, match="Train the model again"):
+        model_from_checkpoint(checkpoint, "cpu")
+
+
+def test_a_checkpoint_needs_only_the_parameter_ranges_of_the_data_config(
+    data_config: dict[str, Any],
+    direct_config: dict[str, Any],
+    make_model: Callable[..., FCModel],
+) -> None:
+    model = make_model(5, direct_config, data_config)
+    checkpoint = {
+        "NTR": 5,
+        "model_config": direct_config,
+        "data_config": {"parameter_ranges": data_config["parameter_ranges"]},
+        "model_state": model.state_dict(),
+    }
+    loaded = model_from_checkpoint(checkpoint, "cpu")
+    assert loaded.NTR == 5
+
+
+@pytest.mark.parametrize(
+    ("key_path", "value", "location"),
+    [
+        (("model_config", "activation"), "sigmoid", "model_config"),
+        (
+            ("data_config", "parameter_ranges", "B1", "lower"),
+            2.0,
+            "data_config.parameter_ranges",
+        ),
+    ],
+    ids=["model", "ranges"],
+)
+def test_a_checkpoint_with_a_bad_config_names_the_checkpoint(
+    data_config: dict[str, Any],
+    direct_config: dict[str, Any],
+    key_path: tuple[str, ...],
+    value: object,
+    location: str,
+) -> None:
+    checkpoint: dict[str, Any] = copy.deepcopy(
+        {
+            "NTR": 5,
+            "model_config": direct_config,
+            "data_config": {"parameter_ranges": data_config["parameter_ranges"]},
+            "model_state": {},
+        }
+    )
+    parent = checkpoint
+    for key in key_path[:-1]:
+        parent = parent[key]
+    parent[key_path[-1]] = value
+
+    with pytest.raises(ValueError, match=f"stores a {location} that is not valid"):
+        model_from_checkpoint(checkpoint, "cpu")

@@ -1,0 +1,9 @@
+# Number of samples processed in a single inference benchmark.
+batch_size: 5000000
+
+# Sub-batch size used during inference.
+infer_batch_size: 30000
+
+# Number of repetitions used for timing measurements.
+# The reported inference time is averaged over these runs.
+n_runs: 20

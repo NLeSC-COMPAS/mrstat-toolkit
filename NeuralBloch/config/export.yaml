@@ -1,0 +1,59 @@
+# Locations of the exported models. Each target has one ONNX model (TARGETS in
+# src/neuralbloch/scripts/export_onnx.py). Each target is a method of the model:
+#   signal_and_derivs  forward: the signal and its T1/T2 derivatives
+#   signal             forward_signal: only the signal
+#   coeffs             forward_coeffs: the basis coefficients of the signal
+# A model calculates all its outputs on each call. Thus, a separate model for
+# each target lets a caller do only the work that it needs.
+targets:
+  signal_and_derivs:
+    onnx_file_path: "outputs/model.onnx"
+  signal:
+    onnx_file_path: "outputs/model_signal.onnx"
+  coeffs:
+    onnx_file_path: "outputs/model_coeffs.onnx"
+
+# ONNX opset version used for export
+opset_version: 18
+
+# Export the model with FP16 precision (model inputs and outputs stay FP32).
+# NeuralBloch.jl builds TensorRT engines from the ONNX models. An engine
+# inherits its precision from the ONNX model (TensorRT networks are strongly
+# typed), so this yields an FP16 engine that trades a small accuracy cost for
+# inference speed.
+# Re-run `export_onnx` and `export_bundle` after changing this setting.
+fp16: false
+
+# Number of samples used to verify exported models against PyTorch
+n_verify_samples: 14400
+
+# The model bundle that NeuralBloch.jl reads (run.py export_bundle). It contains
+# the ONNX models above, the RF tables and a generated model_card.toml that
+# describes them. The task writes the release file of the bundle,
+# neuralbloch-model-<model_family>-v<model_version>.tar.gz, next to the bundle.
+# The task deletes an old bundle in bundle_dir. Thus, bundle_dir must be a new
+# directory or a bundle (a directory with model_card.toml), and the sources of
+# the bundle must be outside it.
+bundle_dir: "outputs/bundle"
+
+# The name of the model in NeuralBloch.jl and in its release tag,
+# model-<model_family>-v<model_version>.
+# A family is one contract for callers: the sequence, the number of readouts and
+# the rank of the signal basis (model.signal.rank). The name of a family has the form
+# <sequence><ntr>-rank<rank>. (export_bundle checks the rank.) If two families
+# would have the same name, add a qualifier at the end (fisp600-rank16-narrow).
+# The version is a semantic version in quotes: MAJOR.MINOR.PATCH, with an optional
+# pre-release part such as -beta.1. Build metadata (+...) is not permitted, because
+# the version is part of the release tag. Each version of a family can replace the
+# version before it with no change for callers:
+#   PATCH: the same weights, exported again
+#   MINOR: new weights or a wider domain
+#   MAJOR: stays 0 until the family is stable
+model_family: "fisp600-rank16"
+model_version: "0.1.0-beta.1"
+
+# export_bundle refuses a family version whose release tag exists, here or on
+# origin. If it cannot get the tags of origin (for example without a network),
+# it stops. Set offline to true to continue with only a warning; then make sure
+# that the version is not released before you publish it.
+offline: false

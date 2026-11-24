@@ -1,0 +1,27 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Mac files
+**/.DS_Store
+
+# Claude
+.claude
+
+# Datasets and outputs
+data/datasets/
+outputs
+
+# Coverage data
+.coverage
+coverage.xml
+
+# MkDocs build output
+site/

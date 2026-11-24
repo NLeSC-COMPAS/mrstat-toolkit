@@ -1,0 +1,193 @@
+import copy
+import time
+from pathlib import Path
+from typing import cast
+import numpy as np
+import torch
+import torch.nn as nn
+from neuralbloch.utils import get_device
+from neuralbloch.utils import load_model
+
+
+def benchmark(
+    model: nn.Module,
+    x_single: torch.Tensor,
+    n_runs: int,
+    infer_batch_size: int,
+    batch_size: int,
+    label: str,
+    dtype: torch.dtype = torch.float32,
+) -> None:
+    """Time repeated forward passes and print mean and minimum runtime.
+
+    Args:
+        model: Model to benchmark.
+        x_single: Single input row, repeated to fill each batch.
+        n_runs: Number of timed repetitions.
+        infer_batch_size: Number of samples per forward pass.
+        batch_size: Total number of samples per run.
+        label: Name printed alongside the timing results.
+        dtype: Floating-point precision used for the inputs.
+    """
+    device = next(model.parameters()).device
+
+    # Pre-allocate batches
+    batches = []
+    for i in range(0, batch_size, infer_batch_size):
+        current_bs = min(infer_batch_size, batch_size - i)
+        batches.append(x_single.repeat(current_bs, 1).to(device=device, dtype=dtype))
+
+    # Warm-up
+    warmup_x = x_single.repeat(infer_batch_size, 1).to(
+        device=device,
+        dtype=dtype,
+    )
+
+    with torch.no_grad():
+        for _ in range(5):
+            model(warmup_x)
+
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+
+    times = []
+
+    with torch.no_grad():
+        for _ in range(n_runs):
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+
+            start = time.perf_counter()
+
+            for x_batch in batches:
+                model(x_batch)
+
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+
+            end = time.perf_counter()
+
+            times.append((end - start) * 1000)
+
+    print(f"\n{label}")
+    print(f"  Mean : {np.mean(times):.2f} ms")
+    print(f"  Min  : {np.min(times):.2f} ms")
+
+
+def test_inference(
+    pt_file_path: Path,
+    device: str,
+    n_runs: int,
+    infer_batch_size: int,
+    batch_size: int,
+) -> None:
+    """Benchmark surrogate inference speed under several execution settings.
+
+    Args:
+        pt_file_path: The checkpoint file (``experiment.pt_file_path``).
+        device: The wanted device (``experiment.device``). The CPU is used
+            if CUDA is not available.
+        n_runs: The number of timed runs (``testing.n_runs``).
+        infer_batch_size: The sub-batch size (``testing.infer_batch_size``).
+        batch_size: The samples of one run (``testing.batch_size``).
+    """
+    device = get_device(device)
+
+    model, _ = load_model(pt_file_path, device)
+    model.eval()
+
+    T1 = 0.8
+    T2 = 0.07
+    B1 = 1.0
+
+    x_single = torch.tensor(
+        [[T1, T2, B1]],
+        dtype=torch.float32,
+        device=device,
+    )
+
+    # --------------------------------------------------
+    # Baseline float32
+    # --------------------------------------------------
+    print("\n=== Baseline (float32) ===")
+
+    benchmark(
+        model,
+        x_single,
+        n_runs,
+        infer_batch_size,
+        batch_size,
+        "float32",
+        dtype=torch.float32,
+    )
+
+    # --------------------------------------------------
+    # Float16
+    # --------------------------------------------------
+    print("\n=== Half precision (float16) ===")
+
+    model_fp16 = copy.deepcopy(model).half().eval()
+
+    benchmark(
+        model_fp16,
+        x_single,
+        n_runs,
+        infer_batch_size,
+        batch_size,
+        "float16",
+        dtype=torch.float16,
+    )
+
+    # --------------------------------------------------
+    # torch.compile
+    # --------------------------------------------------
+    print("\n=== torch.compile ===")
+
+    # `torch.compile` returns an `OptimizedModule`, but it is typed as a plain
+    # callable, so the cast restores the `Module` interface `benchmark` needs.
+    model_compiled = cast(nn.Module, torch.compile(copy.deepcopy(model)))
+
+    benchmark(
+        model_compiled,
+        x_single,
+        n_runs,
+        infer_batch_size,
+        batch_size,
+        "torch.compile",
+        dtype=torch.float32,
+    )
+
+    # --------------------------------------------------
+    # torch.compile + float16
+    # --------------------------------------------------
+    print("\n=== torch.compile + float16 ===")
+
+    model_compiled_fp16 = cast(nn.Module, torch.compile(copy.deepcopy(model).half()))
+
+    benchmark(
+        model_compiled_fp16,
+        x_single,
+        n_runs,
+        infer_batch_size,
+        batch_size,
+        "torch.compile + float16",
+        dtype=torch.float16,
+    )
+
+    # --------------------------------------------------
+    # Compare float32 vs float16 predictions
+    # --------------------------------------------------
+    with torch.no_grad():
+        pred_fp32 = model(x_single.float())
+
+        pred_fp16 = model_fp16(x_single.half())
+
+    sig_fp32 = pred_fp32[0].cpu().numpy()
+    sig_fp16 = pred_fp16[0].float().cpu().numpy()
+
+    diff = np.abs(sig_fp32 - sig_fp16)
+
+    print("\n=== Prediction comparison (float32 vs float16) ===")
+    print(f"Max difference:  {diff.max():.6f}")
+    print(f"Mean difference: {diff.mean():.6f}")
+    print(f"Relative error: {(diff / (np.abs(sig_fp32) + 1e-12)).mean() * 100:.4f}%")
