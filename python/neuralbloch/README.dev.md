@@ -68,7 +68,7 @@ The import of `juliacall` starts Julia. If torch loads before `juliacall`, Julia
 
 ## Git hooks
 
-[prek](https://prek.j178.dev/) manages the git hooks. `prek.toml` defines them. Install the hooks one time for each clone:
+[prek](https://prek.j178.dev/) manages the git hooks. `prek.toml` at the repository root defines them. Run the `prek` commands below from the repository root. Install the hooks one time for each clone:
 
 ```bash
 uv run prek install

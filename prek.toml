@@ -3,13 +3,14 @@
 #:schema https://www.schemastore.org/prek.json
 
 # `prek.toml` and `repo = "builtin"` below are prek-specific; stock pre-commit
-# cannot read this file. The version matches the `prek` pin in pyproject.toml.
+# cannot read this file. The version matches the `prek` pin in
+# python/neuralbloch/pyproject.toml.
 minimum_prek_version = "0.4.11"
 
 default_install_hook_types = ["pre-commit", "pre-push"]
 
 # Linting and formatting for the Python files, configured under `[tool.ruff]`
-# in pyproject.toml.
+# in the pyproject.toml of each package.
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
 rev = "v0.16.1"
@@ -18,11 +19,11 @@ hooks = [
   { id = "ruff-format" },
 ]
 
-# Type checking, configured under `[tool.ty]` in pyproject.toml.
+# Type checking, configured under `[tool.ty]` in python/neuralbloch/pyproject.toml.
 [[repos]]
 repo = "local"
 hooks = [
-  { id = "ty", name = "ty", entry = "uv run ty check", language = "system", types = [
+  { id = "ty", name = "ty", entry = "uv run --directory python/neuralbloch ty check", language = "system", types = [
     "python",
   ], pass_filenames = false, require_serial = true, stages = ["pre-push"] },
 ]
@@ -31,7 +32,7 @@ hooks = [
 [[repos]]
 repo = "https://github.com/adrienverge/yamllint"
 rev = "v1.38.0"
-hooks = [{ id = "yamllint", args = ["--strict"], files = "^config/" }]
+hooks = [{ id = "yamllint", args = ["--strict"], files = "^python/neuralbloch/config/" }]
 
 # Prek builtin hooks
 [[repos]]

@@ -1,4 +1,4 @@
-# Style of the files in config/ (issue #20).
+# Style of the files in python/neuralbloch/config/ (issue #20).
 extends: "default"
 
 rules:
