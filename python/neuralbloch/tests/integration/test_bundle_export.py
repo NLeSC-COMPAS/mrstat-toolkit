@@ -176,7 +176,9 @@ def test_git_runs_in_this_repository(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    assert Path(git("rev-parse", "--show-toplevel")) == REPO_ROOT
+    # REPO_ROOT can be a subdirectory of the git repository (the monorepo)
+    toplevel = Path(git("rev-parse", "--show-toplevel"))
+    assert toplevel / git("rev-parse", "--show-prefix") == REPO_ROOT
     with pytest.raises(RuntimeError, match="is not a git command"):
         git("no-such-command")
 
